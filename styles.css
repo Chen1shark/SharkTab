@@ -1,0 +1,1510 @@
+/* ============================================================
+   页面层 · 暗玻璃 + 全局压暗
+   ------------------------------------------------------------
+   壁纸先经过一层 30% 黑色遮罩，UI 全部落在遮罩之上：
+   搜索框是 10% 白玻璃 + 1px 白线框，磁贴是 20% 黑底板，
+   不再出现刺眼的白色补丁；时钟与标签固定浅色 + 重暗影。
+   CSS 不读像素：tone 由 [data-tone] 提供（当前固定暗色 UI 不依赖）。
+   ============================================================ */
+
+:root {
+  /* 面板色：不透明，壁纸不影响 */
+  --panel: #191e2a;
+  --panel-raised: #202634;
+  --panel-field: #12161f;
+  --panel-line: #2b3241;
+  --panel-text: #eceef4;
+  --panel-text-soft: #b1b8c6;
+  --panel-text-dim: #8b93a3;
+  --paper: #e9edf4;
+  --danger: #a94d48;
+  --accent: #7dd3fc;
+
+  /* 字体配对 */
+  --font-ui: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system,
+    "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-display: "Iowan Old Style", "Palatino Linotype", Georgia,
+    "Songti SC", "SimSun", serif;
+  --font-mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
+
+  /* 动效 */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --dialog-in: 200ms;
+  --dialog-out: 160ms;
+
+  /* 页面环境色：默认深色，和默认暮光渐变一致 */
+  --ui-ink-rgb: 246 248 252;
+  --ui-tone-rgb: 8 10 14;
+  --ui-shadow-a: 0.40;
+
+  /* 背景图由 wallpaper.js 写入：url("...") */
+  --wallpaper: none;
+}
+
+/* 采样器在 .search / .shortcuts 上写 data-tone；
+   也可以只给 <html> 写，整页统一。 */
+[data-tone="dark"] {
+  --ui-ink-rgb: 246 248 252;
+  --ui-tone-rgb: 8 10 14;
+  --ui-shadow-a: 0.40;
+}
+
+[data-tone="light"] {
+  --ui-ink-rgb: 10 12 16;
+  --ui-tone-rgb: 255 255 255;
+  --ui-shadow-a: 0.16;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  height: 100%;
+  color-scheme: light dark;
+  background: #0a0f24;
+}
+
+body {
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--font-ui);
+  color: rgba(255, 255, 255, 0.92);
+  background-color: #0a0f24;
+  background-image:
+    var(--wallpaper),
+    radial-gradient(1100px 760px at 12% 4%, rgba(124, 58, 237, 0.4), transparent 62%),
+    radial-gradient(1000px 720px at 88% 12%, rgba(14, 116, 144, 0.44), transparent 64%),
+    radial-gradient(900px 720px at 66% 98%, rgba(190, 24, 93, 0.24), transparent 62%),
+    linear-gradient(155deg, #0a0f24 0%, #171034 46%, #0a1224 100%);
+  background-position: center, 0 0, 0 0, 0 0, 0 0;
+  background-size: cover, auto, auto, auto, auto;
+  background-repeat: no-repeat;
+}
+
+/* 全局压暗层：压在壁纸/渐变之上、所有 UI 之下，复杂底图不再抢画面 */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background: rgba(0, 0, 0, 0.30);
+  pointer-events: none;
+}
+
+/* 弹窗始终是深色面板，原生控件也跟着深色 */
+.manager,
+.confirm {
+  color-scheme: dark;
+}
+
+.stage {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  /* 放弃垂直居中：整体上移，下方留给壁纸 */
+  padding: 22vh 20px 10vh;
+}
+
+/* ---------- 时间 ---------- */
+
+.clock-container {
+  margin-bottom: 32px;
+  text-align: center;
+  user-select: none;
+}
+
+#time {
+  font-size: 64px;
+  font-weight: 200;
+  line-height: 1.05;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  text-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.8),
+    0 0 2px rgba(0, 0, 0, 0.5);
+}
+
+#date {
+  margin-top: 6px;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.82);
+  text-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.8),
+    0 0 2px rgba(0, 0, 0, 0.5);
+}
+
+/* ---------- 搜索框 ---------- */
+
+.search {
+  position: relative;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  width: min(640px, calc(100vw - 40px));
+  height: 58px;
+  padding: 0 9px 0 21px;
+  border-radius: 8px;
+  /* 低透明度线框：花哨底图上只留一层薄玻璃，不做白色补丁 */
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background-color: rgba(255, 255, 255, 0.10);
+  box-shadow: 0 18px 40px -20px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(18px) saturate(1.05);
+  /* 只补间颜色；大阴影不做 paint 补间 */
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .search:hover {
+    border-color: rgba(255, 255, 255, 0.40);
+  }
+}
+
+/* 聚焦不额外增亮：只保留鼠标悬停的反馈，光标 / 输入内容自然提示焦点 */
+
+.icon {
+  width: 19px;
+  height: 19px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.search-icon {
+  color: rgba(255, 255, 255, 0.50);
+  margin-right: 13px;
+  transition: color 180ms ease;
+}
+
+#query {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: 0;
+  background: none;
+  font: inherit;
+  font-size: 16.5px;
+  letter-spacing: 0.006em;
+  color: rgba(255, 255, 255, 0.95);
+  caret-color: #fff;
+  text-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.55),
+    0 0 2px rgba(0, 0, 0, 0.40);
+}
+
+/* 占位文案是自绘的：原生 placeholder 留空，避免按住鼠标拖动时整段文字被选中变蓝。
+   位置对齐输入框文字起点：padding-left 21 + 图标 19 + 图标右间距 13 */
+.search-hint {
+  position: absolute;
+  left: 53px;
+  top: 50%;
+  transform: translateY(-50%);
+  font: inherit;
+  font-size: 16.5px;
+  letter-spacing: 0.006em;
+  color: rgba(255, 255, 255, 0.55);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  user-select: none;
+}
+
+#query:not(:placeholder-shown) + .search-hint {
+  opacity: 0;
+}
+
+/* 搜索框里的按钮 / 图标不参与拖选：拖出输入框时不要选中右侧引擎图标 */
+.search > :not(#query) {
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.search img {
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* 清空按钮：输入为空时隐藏 */
+.clear {
+  color: rgba(255, 255, 255, 0.45);
+  opacity: 1;
+  transition: opacity 140ms ease, color 140ms ease;
+}
+
+#query:placeholder-shown ~ .clear {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.clear:hover {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.divider {
+  width: 1px;
+  height: 22px;
+  margin: 0 7px 0 3px;
+  background: rgba(255, 255, 255, 0.18);
+  flex: none;
+}
+
+.icon-btn {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: rgba(255, 255, 255, 0.50);
+  cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease,
+    transform 160ms var(--ease-out);
+}
+
+.icon-btn:hover {
+  background-color: rgba(255, 255, 255, 0.10);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.engine[aria-expanded="true"] {
+  background-color: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+/* ---------- 引擎标识 ---------- */
+
+.engine-glyph-slot,
+.engine-logo-slot {
+  display: grid;
+  place-items: center;
+}
+
+.engine-logo {
+  display: block;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  object-fit: contain;
+}
+
+.engine-logo-slot .shortcut-badge {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  font-size: 11px;
+}
+
+/* ---------- 引擎菜单：恒定深色浮层 ---------- */
+
+.menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 10px;
+  min-width: 190px;
+  padding: 8px;
+  border-radius: 16px;
+  border: 1px solid rgb(255 255 255 / 0.10);
+  background-color: rgb(15 16 22 / 0.88);
+  box-shadow:
+    0 24px 60px rgb(0 0 0 / 0.50),
+    inset 0 1px 0 rgb(255 255 255 / 0.06);
+  backdrop-filter: blur(20px) saturate(1.3);
+  z-index: 10;
+  opacity: 1;
+  transform: none;
+  transform-origin: 100% 0;
+}
+
+.menu.is-open {
+  animation: engine-menu-in 150ms var(--ease-out) both;
+}
+
+@keyframes engine-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.72);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease,
+    transform 160ms var(--ease-out);
+}
+
+.menu-item:hover {
+  background-color: rgba(255, 255, 255, 0.10);
+  color: #fff;
+}
+
+.menu-item[aria-selected="true"] {
+  color: #fff;
+}
+
+.menu-item:focus-visible {
+  outline: 1px solid rgba(125, 211, 252, 0.5);
+  outline-offset: 1px;
+  background-color: rgba(255, 255, 255, 0.10);
+  color: #fff;
+}
+
+.menu-icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 8px;
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.menu-icon .engine-logo {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+}
+
+.menu-icon .shortcut-badge {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.menu-label {
+  font-size: 13.5px;
+  font-weight: 400;
+}
+
+.menu-item .check {
+  display: grid;
+  place-items: center;
+  margin-left: auto;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--accent);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.menu-item[aria-selected="true"] .check {
+  opacity: 1;
+}
+
+.menu-item .check svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ---------- 快捷入口 ---------- */
+
+.shortcuts {
+  --shortcut-columns: 8;
+  display: grid;
+  grid-template-columns: repeat(var(--shortcut-columns), minmax(0, 56px));
+  justify-content: start;
+  align-items: start;
+  align-content: start;
+  column-gap: 24px;
+  row-gap: 24px;
+  /* 与搜索框同宽、同一条左边缘 */
+  width: min(640px, calc(100vw - 40px));
+  margin-top: 30px;
+  padding-bottom: 24px;
+  /* 只在折叠/展开动画期间由 JS 打开 overflow: hidden */
+  transition: height 220ms var(--ease-out);
+}
+
+/* 图标很少（不足 5 个、单行）时才整组居中；其余情况一律左对齐 */
+.shortcuts.is-sparse {
+  grid-template-columns: repeat(4, minmax(0, 56px));
+  justify-content: center;
+}
+
+/* 格子决定磁贴尺寸：窄屏时整行等比缩小 */
+.shortcuts .shortcut {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+}
+
+/* 默认收起时，超出“2 行”的磁贴由 JS 打上这个类 */
+.shortcut.is-folded {
+  display: none;
+}
+
+/* 极简展开/收起箭头：无底板，只靠颜色变化 */
+.shortcuts-toggle {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.36);
+  cursor: pointer;
+  transition: color 140ms ease;
+}
+
+.shortcuts-toggle[hidden] {
+  display: none;
+}
+
+.shortcuts-toggle:hover {
+  color: rgba(255, 255, 255, 0.80);
+}
+
+.shortcuts-toggle:focus-visible {
+  outline: 1px solid rgba(255, 255, 255, 0.35);
+  outline-offset: 3px;
+}
+
+.shortcuts-toggle svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 200ms var(--ease-out);
+}
+
+.shortcuts-toggle.is-expanded svg {
+  transform: rotate(180deg);
+}
+
+.shortcut {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.20);
+  color: rgba(255, 255, 255, 0.90);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: none;
+  touch-action: none;
+  -webkit-user-drag: none;
+  -webkit-touch-callout: none;
+  user-select: none;
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.30),
+    inset 0 -1px 1px rgba(0, 0, 0, 0.30),
+    0 4px 12px rgba(0, 0, 0, 0.30);
+  backdrop-filter: blur(12px) saturate(1.05);
+  transition:
+    border-color 160ms ease,
+    color 180ms ease,
+    transform 160ms var(--ease-out);
+}
+
+/* hover 阴影用伪元素淡入，避免 box-shadow 走 paint 补间 */
+.shortcut::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: 0 14px 30px -16px rgba(0, 0, 0, 0.75);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms ease;
+}
+
+.shortcut:focus-visible {
+  z-index: 1;
+  border-color: rgba(255, 255, 255, 0.30);
+  background: rgba(0, 0, 0, 0.30);
+  transform: translateY(-2px);
+  outline: 2px solid rgba(255, 255, 255, 0.55);
+  outline-offset: 3px;
+}
+
+.shortcut:focus-visible::after {
+  opacity: 1;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .shortcut:hover {
+    z-index: 1;
+    border-color: rgba(255, 255, 255, 0.26);
+    background: rgba(0, 0, 0, 0.30);
+    transform: translateY(-2px);
+  }
+
+  .shortcut:hover::after {
+    opacity: 1;
+  }
+}
+
+.shortcut-icon {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  /* 白色柔光描边：深色图标从深底板里抠出来，浅色图标也保留边界 */
+  filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.70));
+}
+
+.shortcut-icon-slot {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+}
+
+.shortcut-badge {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.shortcut-label {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translate(-50%, 3px);
+  opacity: 0;
+  font-size: 12.5px;
+  line-height: 1;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.8),
+    0 0 2px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  transition:
+    opacity 140ms ease,
+    transform 140ms var(--ease-out),
+    color 180ms ease;
+}
+
+.shortcut:focus-visible .shortcut-label {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .shortcut:hover .shortcut-label {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+/* 添加磁贴是纯控制件：不用底板，只用一条白色虚线 */
+.shortcut.add {
+  border: 1px dashed rgba(255, 255, 255, 0.28);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.58);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.shortcut.add::after {
+  box-shadow: 0 14px 28px -16px rgba(0, 0, 0, 0.70);
+}
+
+.shortcut.add:focus-visible {
+  border-style: solid;
+  border-color: rgba(255, 255, 255, 0.50);
+  background-color: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.95);
+  transform: translateY(-2px);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .shortcut.add:hover {
+    border-style: solid;
+    border-color: rgba(255, 255, 255, 0.50);
+    background-color: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.95);
+    transform: translateY(-2px);
+  }
+}
+
+.shortcut.add .icon {
+  width: 20px;
+  height: 20px;
+  transition: color 140ms ease;
+}
+
+/* ---------- 长按拖动排序 ---------- */
+
+/* 原位置变成虚线占位，图标交给跟随指针的 ghost */
+.shortcut.is-drag-source {
+  border: 1px dashed rgba(255, 255, 255, 0.32);
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.shortcut.is-drag-source .shortcut-icon-slot,
+.shortcut.is-drag-source .shortcut-label {
+  opacity: 0;
+}
+
+.shortcut.is-drag-source::after {
+  opacity: 0;
+}
+
+.shortcut-drag-ghost {
+  position: fixed;
+  z-index: 300;
+  padding: 0;
+  transform: translate(-50%, -50%) scale(1.08);
+  opacity: 0.96;
+  pointer-events: none;
+  transition: none;
+  will-change: left, top;
+  box-shadow:
+    0 26px 50px -22px rgba(0, 0, 0, 0.70),
+    0 4px 12px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+body.is-shortcut-dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+body.is-shortcut-dragging .shortcut {
+  cursor: grabbing;
+}
+
+body.is-shortcut-dragging .shortcut:hover,
+body.is-shortcut-dragging .shortcut:active {
+  transform: none;
+}
+
+body.is-shortcut-dragging .shortcut-label,
+body.is-shortcut-dragging .shortcut:hover .shortcut-label {
+  opacity: 0;
+}
+
+body.is-shortcut-dragging .shortcut:hover::after,
+body.is-shortcut-dragging .shortcut.is-drag-source::after {
+  opacity: 0;
+}
+
+/* 页面右键菜单：没有自定义壁纸时隐藏「恢复默认背景」 */
+.page-menu .tile-menu-item[hidden] {
+  display: none;
+}
+
+/* ---------- 按压反馈 ---------- */
+
+.icon-btn:active,
+.shortcut:active {
+  transform: scale(0.97);
+}
+
+/* ---------- 降级与可访问性 ---------- */
+
+@supports not (backdrop-filter: blur(1px)) {
+  .search {
+    background-color: rgba(255, 255, 255, 0.16);
+  }
+
+  .shortcut {
+    background: rgba(0, 0, 0, 0.30);
+  }
+}
+
+@media (prefers-contrast: more) {
+  .search {
+    border-color: rgba(255, 255, 255, 0.55);
+  }
+
+  .shortcut {
+    border-color: rgba(255, 255, 255, 0.30);
+  }
+
+  .search-hint {
+    color: rgba(255, 255, 255, 0.82);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .search {
+    background-color: rgba(18, 20, 26, 0.88);
+    backdrop-filter: none;
+  }
+
+  .shortcut {
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shortcut:hover,
+  .shortcut:focus-visible,
+  .shortcut.add:hover,
+  .shortcut.add:focus-visible {
+    transform: none;
+  }
+
+  .shortcut:active,
+  .icon-btn:active {
+    transform: none;
+  }
+
+  .shortcut-label {
+    transform: translate(-50%, 0);
+    transition: opacity 120ms linear;
+  }
+
+  .menu,
+  .menu.is-open {
+    transform: none;
+    animation: none;
+  }
+
+  .shortcut {
+    transition: none;
+  }
+
+  .shortcuts,
+  .shortcuts-toggle svg {
+    transition: none;
+  }
+}
+
+@media (max-width: 720px) and (min-width: 561px) {
+  .shortcuts {
+    --shortcut-columns: 6;
+    column-gap: 24px;
+  }
+}
+
+@media (max-width: 560px) {
+  .stage {
+    padding: 22vh 16px 8vh;
+  }
+
+  .clock-container {
+    margin-bottom: 26px;
+  }
+
+  #time {
+    font-size: 52px;
+  }
+
+  #date {
+    font-size: 13px;
+  }
+
+  .search {
+    width: 100%;
+    height: 54px;
+    padding: 0 7px 0 17px;
+  }
+
+  #query,
+  .search-hint {
+    font-size: 16px;
+  }
+
+  /* 窄屏搜索框左内边距 17px，占位文案起点跟着左移 */
+  .search-hint {
+    left: 49px;
+  }
+
+  .shortcut {
+    border-radius: 16px;
+  }
+
+  .shortcuts {
+    --shortcut-columns: 6;
+    grid-template-columns: repeat(var(--shortcut-columns), minmax(0, 48px));
+    width: 100%;
+    column-gap: 12px;
+    row-gap: 24px;
+    margin-top: 26px;
+    padding-bottom: 22px;
+  }
+
+  .shortcuts.is-sparse {
+    grid-template-columns: repeat(4, minmax(0, 48px));
+    justify-content: center;
+  }
+}
+/* ---------- 弹窗：进入 / 退出 ---------- */
+/*
+ * 刻意避开的三处“AI 套路”：
+ * 1. 不加 backdrop-filter：遮罩只负责压暗场景，不假装玻璃；面板是实色。
+ * 2. 只动 opacity 和 transform，入场 200ms、退场 160ms。入场用
+ *    cubic-bezier(0.16, 1, 0.3, 1) 稳稳落位；退场用更强的
+ *    cubic-bezier(0.23, 1, 0.32, 1)——两者都是 ease-out，起手就有反馈，
+ *    不会像 ease-in 那样先“顿”一下。
+ * 3. 只有 translateY(8px)，没有 scale(0.9x) 的“弹一下”式放大。
+ *
+ * display / overlay 上的 allow-discrete 不是视觉补间，只负责原生 dialog 的
+ * 生命周期：把元素短暂留在 top layer，等退场动画放完再真正移除。
+ */
+
+dialog.manager,
+dialog.confirm {
+  opacity: 0;
+  transform: translateY(8px);
+  transition:
+    opacity var(--dialog-out) var(--ease-out),
+    transform var(--dialog-out) var(--ease-out),
+    display var(--dialog-out) allow-discrete,
+    overlay var(--dialog-out) allow-discrete;
+}
+
+dialog.manager[open],
+dialog.confirm[open] {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity var(--dialog-in) var(--ease-out-expo),
+    transform var(--dialog-in) var(--ease-out-expo),
+    display var(--dialog-in) allow-discrete,
+    overlay var(--dialog-in) allow-discrete;
+}
+
+@starting-style {
+  dialog.manager[open],
+  dialog.confirm[open] {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* 遮罩固定为半透明黑，只过渡 opacity；深色模式下 0.6 刚好压住底图 */
+dialog.manager::backdrop,
+dialog.confirm::backdrop {
+  background-color: rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  transition:
+    opacity var(--dialog-out) var(--ease-out),
+    display var(--dialog-out) allow-discrete,
+    overlay var(--dialog-out) allow-discrete;
+}
+
+dialog.manager[open]::backdrop,
+dialog.confirm[open]::backdrop {
+  opacity: 1;
+  transition:
+    opacity var(--dialog-in) var(--ease-out-expo),
+    display var(--dialog-in) allow-discrete,
+    overlay var(--dialog-in) allow-discrete;
+}
+
+@starting-style {
+  dialog.manager[open]::backdrop,
+  dialog.confirm[open]::backdrop {
+    opacity: 0;
+  }
+}
+
+/* 减少动效：保留 150ms 淡入淡出帮助理解状态变化，去掉全部位移。
+ * display / overlay 仍要保留 allow-discrete，否则原生 dialog 会瞬间移除。 */
+@media (prefers-reduced-motion: reduce) {
+  dialog.manager,
+  dialog.manager[open],
+  dialog.confirm,
+  dialog.confirm[open] {
+    transform: none;
+    transition:
+      opacity 150ms linear,
+      display 150ms allow-discrete,
+      overlay 150ms allow-discrete;
+  }
+
+  dialog.manager::backdrop,
+  dialog.manager[open]::backdrop,
+  dialog.confirm::backdrop,
+  dialog.confirm[open]::backdrop {
+    transition:
+      opacity 150ms linear,
+      display 150ms allow-discrete,
+      overlay 150ms allow-discrete;
+  }
+}
+
+/* ---------- 弹窗面板 ---------- */
+
+/* 两个弹窗共用同一张实色面板：16px 圆角 + 柔和投影，靠边界和阴影分开，
+ * 不靠模糊。这里没有 border-radius: 24px + 白色内高光那套玻璃组合。 */
+.manager,
+.confirm {
+  margin: auto;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 16px;
+  background: var(--panel);
+  color: var(--panel-text);
+  font-family: var(--font-ui);
+  box-shadow:
+    0 40px 80px -24px rgba(0, 0, 0, 0.78),
+    0 8px 24px rgba(0, 0, 0, 0.38);
+}
+
+/* ---------- 快捷入口管理面板 ---------- */
+
+.manager:not([open]) {
+  display: none;
+}
+
+.manager {
+  display: flex;
+  flex-direction: column;
+  width: min(440px, calc(100vw - 40px));
+  max-height: min(84vh, 660px);
+  padding: 0;
+  overflow: hidden;
+}
+
+/* 标题区：一行 category（eyebrow）+ 一行动作标题，不再重复两个标题 */
+.manager-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 18px 18px 24px;
+  border-bottom: 1px solid var(--panel-line);
+}
+
+.manager-heading {
+  min-width: 0;
+}
+
+.manager-eyebrow {
+  display: block;
+  margin-bottom: 7px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  color: var(--panel-text-dim);
+}
+
+.manager-head h2 {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: 0.01em;
+}
+
+.modal-close {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  margin-top: 2px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--panel-text-dim);
+  cursor: pointer;
+  transition:
+    color 140ms ease,
+    background-color 140ms ease,
+    border-color 140ms ease,
+    transform 160ms var(--ease-out);
+}
+
+.modal-close .icon {
+  width: 17px;
+  height: 17px;
+}
+
+.modal-close:hover {
+  border-color: rgba(255, 255, 255, 0.07);
+  background: var(--panel-raised);
+  color: var(--panel-text);
+}
+
+.modal-close:focus-visible {
+  outline: 2px solid rgba(125, 211, 252, 0.55);
+  outline-offset: 1px;
+}
+
+.mgr-btn {
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--panel-text-soft);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    color 140ms ease,
+    background-color 140ms ease,
+    transform 160ms var(--ease-out);
+}
+
+.mgr-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--panel-text);
+}
+
+.mgr-btn:focus-visible {
+  outline: 1px solid rgba(125, 211, 252, 0.5);
+  outline-offset: 1px;
+}
+
+/* 磁贴右键菜单 */
+
+.tile-menu {
+  position: fixed;
+  z-index: 200;
+  min-width: 176px;
+  padding: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  background: rgba(20, 20, 20, 0.50);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.40),
+    inset 0 1px 0 rgba(255, 255, 255, 0.10);
+  backdrop-filter: blur(20px) saturate(1.2);
+  opacity: 1;
+  transform: none;
+  /* transform-origin 由 JS 设在光标点上 */
+}
+
+.tile-menu.is-open {
+  animation: context-menu-in 160ms var(--ease-out) both;
+}
+
+@keyframes context-menu-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.tile-menu[hidden] {
+  display: none;
+}
+
+.tile-menu-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: rgba(255, 255, 255, 0.88);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 140ms ease;
+}
+
+/* 第一项和其余项之间：一条极细分隔线 + 一点呼吸间距 */
+.tile-menu-item:nth-child(2) {
+  margin-top: 7px;
+}
+
+.tile-menu-item:nth-child(2)::before {
+  content: "";
+  position: absolute;
+  top: -4px;
+  left: 10px;
+  right: 10px;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  pointer-events: none;
+}
+
+.tile-menu-icon {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.92;
+}
+
+.tile-menu-item:hover,
+.tile-menu-item:focus-visible {
+  background: rgba(255, 255, 255, 0.10);
+}
+
+.manager-form {
+  padding: 20px 24px 22px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-bottom: 14px;
+}
+
+.field label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--panel-text-dim);
+}
+
+/* 输入框是实色“凹槽”，聚焦只换 1px 边框 + 一圈细环，不做霓虹光晕 */
+.field input {
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid var(--panel-line);
+  border-radius: 9px;
+  background: var(--panel-field);
+  color: var(--panel-text);
+  caret-color: var(--accent);
+  font-family: var(--font-ui);
+  font-size: 13.5px;
+}
+
+.field input::placeholder {
+  color: #667081;
+}
+
+/* 网址是“数据”，用等宽字体；名称是“人话”，用正文字体 */
+#scUrl {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: -0.01em;
+}
+
+.field input:focus {
+  outline: none;
+  border-color: rgba(125, 211, 252, 0.6);
+  box-shadow: 0 0 0 2px rgba(125, 211, 252, 0.14);
+}
+
+/* 网址识别结果：一条安静的说明行，不用彩色 tint 卡片 */
+.preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: -2px 0 14px;
+  padding: 8px 10px;
+  border: 1px solid var(--panel-line);
+  border-radius: 9px;
+  background: var(--panel-raised);
+}
+
+.preview[hidden] {
+  display: none;
+}
+
+.preview-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  /* 浅色实底是为了黑/白 logo 都能看清，是功能色，不是装饰 */
+  border-radius: 8px;
+  background: #dfe4ec;
+}
+
+.preview-icon .shortcut-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.preview-icon .shortcut-badge {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  font-size: 11px;
+}
+
+.preview-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--panel-text-soft);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-actions {
+  display: flex;
+  gap: 2px;
+  flex: none;
+}
+
+.preview-actions .mgr-btn {
+  padding: 4px 6px;
+  font-size: 11.5px;
+}
+
+.form-error {
+  min-height: 16px;
+  margin: 0 0 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #dd8a85;
+}
+
+/* 主操作永远在右侧；取消是纯文字按钮，靠左但不抢视线 */
+.form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.form-actions .btn.ghost {
+  margin-right: auto;
+}
+
+/* 按钮：单一实色，不做渐变、不做 hover 缩放；状态只靠底色深浅表达 */
+.btn {
+  height: 38px;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    transform 160ms var(--ease-out);
+}
+
+/* 按压反馈不是装饰性 hover 放大：它确认这次点击被接收 */
+.btn:active {
+  transform: scale(0.97);
+}
+
+.btn:focus-visible {
+  outline: 2px solid rgba(125, 211, 252, 0.55);
+  outline-offset: 2px;
+}
+
+.btn.primary {
+  background: var(--paper);
+  color: #12151d;
+}
+
+.btn.primary:hover {
+  background: #f6f8fb;
+}
+
+.btn.primary:active {
+  background: #d5dbe5;
+}
+
+.btn.ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--panel-text-soft);
+}
+
+.btn.ghost:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--panel-text);
+}
+
+.btn.danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+.btn.danger:hover {
+  background: #bb554f;
+}
+
+.btn.danger:active {
+  background: #94413d;
+}
+
+/* ---------- 删除确认弹窗 ---------- */
+
+.confirm:not([open]) {
+  display: none;
+}
+
+.confirm {
+  width: min(340px, calc(100vw - 40px));
+  padding: 26px 24px 20px;
+  text-align: center;
+}
+
+/* 只有一个线性图标，不套渐变圆形徽章 */
+.confirm-icon {
+  display: block;
+  width: 26px;
+  height: 26px;
+  margin: 0 auto 14px;
+  color: #dc8c86;
+}
+
+.confirm-icon svg {
+  width: 26px;
+  height: 26px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.confirm h2 {
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.01em;
+}
+
+.confirm-text {
+  margin-top: 8px;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--panel-text-soft);
+  word-break: break-word;
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.confirm-actions .btn {
+  flex: 1;
+  height: 38px;
+  padding: 0;
+}
+
+/* 确认框里两个等宽按钮，取消需要可见的按钮边界（和表单里的纯文字取消不同） */
+.confirm-actions .btn.ghost {
+  border-color: var(--panel-line);
+  background: var(--panel-raised);
+}
+
+.confirm-actions .btn.ghost:hover {
+  border-color: #394255;
+  background: #242b3a;
+}
+
+/* ---------- 按压反馈 ---------- */
+/* 只缩不放：这是对“点击已被接收”的确认，不是装饰性的 hover 放大 */
+.icon-btn:active,
+.modal-close:active,
+.mgr-btn:active,
+.menu-item:active,
+.shortcut:active {
+  transform: scale(0.97);
+}
+
+/* ---------- 减少动效（组件部分） ---------- */
+/* 保留颜色与透明度，去掉所有位移；弹窗的处理在文件前部的专用规则里 */
+@media (prefers-reduced-motion: reduce) {
+  .shortcut:hover,
+  .shortcut:focus-visible,
+  .shortcut.add:hover,
+  .shortcut.add:focus-visible {
+    transform: none;
+  }
+
+  .shortcut:active,
+  .btn:active,
+  .icon-btn:active,
+  .modal-close:active,
+  .mgr-btn:active,
+  .menu-item:active {
+    transform: none;
+  }
+
+  /* 标签只淡入，不再做 3px 位移 */
+  .shortcut-label {
+    transform: translate(-50%, 0);
+    transition: opacity 120ms linear;
+  }
+
+  /* 菜单仍保留 150-160ms 的 opacity 淡入，但不缩放/平移 */
+  .menu,
+  .menu.is-open,
+  .tile-menu,
+  .tile-menu.is-open {
+    transform: none;
+    animation: none;
+  }
+
+  .shortcut {
+    transition: none;
+  }
+}

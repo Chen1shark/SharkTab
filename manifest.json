@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "SharkTab",
+  "version": "0.1.0",
+  "description": "SharkTab — 清爽、克制的 Edge 新标签页：时间与农历、搜索、快捷入口、自定义壁纸。",
+  "icons": {
+    "16": "icons/app/icon-16.png",
+    "32": "icons/app/icon-32.png",
+    "48": "icons/app/icon-48.png",
+    "128": "icons/app/icon-128.png"
+  },
+  "permissions": ["favicon"],
+  "chrome_url_overrides": {
+    "newtab": "index.html"
+  }
+}
