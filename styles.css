@@ -7,10 +7,11 @@
    CSS 不读像素：tone 由 [data-tone] 提供（当前固定暗色 UI 不依赖）。
    ============================================================ */
 
-/* 时钟专用字体：Inter（SIL OFL 1.1，随扩展分发），跨平台渲染一致 */
+/* 时钟专用字体：Roboto（SIL OFL 1.1，随扩展分发），跨平台渲染一致。
+ * 选它是因为数字「1」只有斜旗、没有底横，和参考的时钟字形一致。 */
 @font-face {
-  font-family: "Inter Clock";
-  src: url("fonts/inter-latin.woff2") format("woff2");
+  font-family: "Roboto Clock";
+  src: url("fonts/roboto-latin.woff2") format("woff2");
   font-weight: 100 900;
   font-style: normal;
   font-display: swap;
@@ -32,8 +33,8 @@
   /* 字体配对 */
   --font-ui: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system,
     "PingFang SC", "Microsoft YaHei", sans-serif;
-  /* 大字号时钟：Inter，笔画均匀、数字骨架端正 */
-  --font-clock: "Inter Clock", "Segoe UI Variable Display", "Segoe UI",
+  /* 大字号时钟：Roboto，数字 1 无底横，笔画均匀 */
+  --font-clock: "Roboto Clock", "Segoe UI Variable Display", "Segoe UI",
     system-ui, -apple-system, sans-serif;
   --font-display: "Iowan Old Style", "Palatino Linotype", Georgia,
     "Songti SC", "SimSun", serif;

@@ -16,4 +16,4 @@ SharkTab 与 GitHub、哔哩哔哩、斗鱼、Google、Microsoft Bing、百度�
 
 ## 字体
 
-- `fonts/inter-latin.woff2`：Inter，Copyright (c) 2016 The Inter Project Authors，采用 SIL Open Font License 1.1 授权，许可证全文见 [`fonts/OFL.txt`](fonts/OFL.txt)。仅用于新标签页时钟数字。Latin 子集，随扩展本地分发，不请求远程字体服务。
+- `fonts/roboto-latin.woff2`：Roboto，Copyright 2011 The Roboto Project Authors，采用 SIL Open Font License 1.1 授权，许可证全文见 [`fonts/OFL.txt`](fonts/OFL.txt)。仅用于新标签页时钟数字。Latin 子集，随扩展本地分发，不请求远程字体服务。
