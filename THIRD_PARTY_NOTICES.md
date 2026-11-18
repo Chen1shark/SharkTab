@@ -13,3 +13,7 @@ SharkTab 与 GitHub、哔哩哔哩、斗鱼、Google、Microsoft Bing、百度�
 上述第三方名称、标识与图标是其各自所有者的商标或受版权保护的内容。本扩展仅在需要指代对应网站或搜索引擎时使用它们，不表示任何形式的授权、合作或认可。
 
 如权利人认为某项使用不当，可通过 Edge Add-ons 商店页面提供的支持联系方式与开发者联系。
+
+## 字体
+
+- `fonts/inter-latin.woff2`：Inter，Copyright (c) 2016 The Inter Project Authors，采用 SIL Open Font License 1.1 授权，许可证全文见 [`fonts/OFL.txt`](fonts/OFL.txt)。仅用于新标签页时钟数字。Latin 子集，随扩展本地分发，不请求远程字体服务。

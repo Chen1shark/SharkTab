@@ -596,6 +596,33 @@ function iconElement(src) {
   return img;
 }
 
+/* 识别 _favicon 的“空图标”占位：纯黑、不透明像素只占一小块。
+ * 真实图标要么有颜色、要么覆盖面积明显更大，不会落在这个区间。 */
+function isFaviconPlaceholder(img) {
+  if (!img.src.includes('/_favicon/')) return false;
+
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 16;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(img, 0, 0, 16, 16);
+    const data = ctx.getImageData(0, 0, 16, 16).data;
+
+    let opaque = 0;
+    let maxChannel = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 3] <= 20) continue;
+      opaque++;
+      maxChannel = Math.max(maxChannel, data[i], data[i + 1], data[i + 2]);
+    }
+
+    const coverage = opaque / (16 * 16);
+    return coverage > 0 && coverage < 0.35 && maxChannel < 24;
+  } catch (_) {
+    return false;
+  }
+}
+
 /* 加载单个来源，成功时返回 { img, data }：
  * - 普通来源直接挂到 Image 上；
  * - 字节来源先 fetch（能校验占位图标记，也能直接拿到字节存成 data URL）。
@@ -622,6 +649,12 @@ function loadIconSource(source) {
 
     const accept = (img) => {
       if (img.naturalWidth < 8 || img.naturalHeight < 8) {
+        fail();
+        return;
+      }
+      // _favicon 在站点没有图标时会返回浏览器默认的深色小文档图形：
+      // 纯黑、覆盖面积很小。这种占位图在深色磁贴上只会更糊，直接换下一个来源。
+      if (isFaviconPlaceholder(img)) {
         fail();
         return;
       }
