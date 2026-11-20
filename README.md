@@ -75,7 +75,8 @@ SharkTab 不收集、不上传任何个人数据，没有分析、遥测或广�
 
 | 文件 | 作用 |
 | --- | --- |
-| `manifest.json` | Edge MV3 扩展清单，覆盖新标签页 |
+| `manifest.json` | Edge MV3 扩展清单，覆盖新标签页；`name` / `description` 走 `__MSG_` 占位符 |
+| `_locales/zh_CN/messages.json` | 扩展名称与简短描述的中文本地化，Edge 加载项商店据此识别「简体中文」 |
 | `index.html` | 页面结构：时间、搜索框、快捷入口、弹窗 |
 | `styles.css` | 暗玻璃视觉、壁纸遮罩、网格与弹窗样式 |
 | `app.js` | 搜索引擎、搜索提交、快捷键、快捷入口增删改查与拖动 |

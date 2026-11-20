@@ -1,0 +1,10 @@
+{
+  "extensionName": {
+    "message": "SharkTab",
+    "description": "扩展名称，用于扩展管理页、新标签页与 Edge 加载项商店的列表标题。"
+  },
+  "extensionDescription": {
+    "message": "SharkTab — 清爽、克制的 Edge 新标签页：时间与农历、搜索、快捷入口、自定义壁纸。",
+    "description": "简短描述，用于扩展管理页与 Edge 加载项商店列表；Partner Center 的「简短描述」即取自这里。"
+  }
+}
