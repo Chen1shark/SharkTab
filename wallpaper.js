@@ -1,21 +1,37 @@
 /* wallpaper.js
- * 自定义背景：上传 → 采样 → 落盘 → 刷新恢复 / 恢复默认。
- * 背景图存成 Blob（IndexedDB），不塞 localStorage。
- * 入口在页面空白处右键菜单；本文件只负责文件输入、存储和状态。
+ * 自定义背景：上传 → 解码 / 压缩 → 落盘 → 刷新恢复 / 恢复默认。
+ * 背景图压缩成 WebP Blob（IndexedDB），不塞 localStorage。
+ * 入口在页面右下角「···」或空白处右键菜单；本文件只负责文件输入、压缩、存储和状态。
  */
 (() => {
   const DB_NAME = 'sharktab';
   const STORE = 'wallpaper';
   const KEY = 'current';
   const MAX_BYTES = 20 * 1024 * 1024;
+  const MAX_EDGE = 3840;
+  const MAX_PIXELS = 3840 * 2160;
+  const WEBP_QUALITY = 0.85;
 
   const fileInput = document.getElementById('wallpaperFile');
   if (!fileInput) return;
 
   let objectUrl = null;
   let seq = 0;
+  let writeChain = Promise.resolve();
 
   const warn = (message) => console.warn('[SharkTab]', message);
+
+  function notify(message) {
+    if (typeof window.showToast === 'function') window.showToast(message);
+    else warn(message);
+  }
+
+  /* 所有 IndexedDB 写操作串行：旧壁纸的 put 不会插到「恢复默认」的 delete 之后。 */
+  function queueWrite(task) {
+    const run = writeChain.then(task, task);
+    writeChain = run.catch(() => { /* 让队列在失败后继续 */ });
+    return run;
+  }
 
   function openDb() {
     if (!('indexedDB' in window)) {
@@ -55,7 +71,8 @@
     try {
       await new Promise((resolve, reject) => {
         const tx = db.transaction(STORE, 'readwrite');
-        tx.objectStore(STORE).put(blob, KEY);
+        // 带版本的对象：旧版存的是裸 Blob，恢复时据此重新压缩
+        tx.objectStore(STORE).put({ version: 2, blob }, KEY);
         tx.oncomplete = () => resolve();
         tx.onerror = () => reject(tx.error);
         tx.onabort = () => reject(tx.error || new Error('indexeddb-aborted'));
@@ -63,6 +80,13 @@
     } finally {
       db.close();
     }
+  }
+
+  function readStoredWallpaper(value) {
+    // 裸 Blob 是旧版原图，需要重新压缩；带版本的对象已经处理过
+    if (value instanceof Blob) return { blob: value, processed: false };
+    if (value && value.blob instanceof Blob) return { blob: value.blob, processed: true };
+    return null;
   }
 
   async function clearStoredWallpaper() {
@@ -80,30 +104,86 @@
     }
   }
 
-  async function applyWallpaper(blob, { persist = true } = {}) {
-    if (typeof window.applyWallpaperTone !== 'function') {
-      warn('背景读取组件未加载');
-      return false;
-    }
+  function canvasToBlob(canvas, type, quality) {
+    return new Promise((resolve) => canvas.toBlob(resolve, type, quality));
+  }
 
-    const mine = ++seq;
-    const url = URL.createObjectURL(blob);
+  /* 解码原图，按最大边长 / 总像素缩到显示够用的尺寸，再编码成 WebP。
+   * 压缩失败时退回原图，至少让用户还能用；图片完全读不出来才报错。 */
+  async function compressWallpaper(source) {
+    const url = URL.createObjectURL(source);
+    const img = new Image();
+    let decoded = false;
 
-    let ok = false;
     try {
-      ok = (await window.applyWallpaperTone(url)) !== false;
-    } catch {
-      ok = false;
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = () => reject(new Error('decode-failed'));
+        img.src = url;
+      });
+      decoded = true;
+
+      const iw = img.naturalWidth;
+      const ih = img.naturalHeight;
+      if (!iw || !ih) throw new Error('no-size');
+
+      const edgeScale = Math.min(1, MAX_EDGE / Math.max(iw, ih));
+      const pixelScale = Math.min(1, Math.sqrt(MAX_PIXELS / (iw * ih)));
+      const scale = Math.min(edgeScale, pixelScale);
+      const width = Math.max(1, Math.round(iw * scale));
+      const height = Math.max(1, Math.round(ih * scale));
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('no-canvas');
+
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, width, height);
+
+      const blob = await canvasToBlob(canvas, 'image/webp', WEBP_QUALITY);
+      canvas.width = canvas.height = 1;
+
+      if (!blob || !blob.type.startsWith('image/')) throw new Error('encode-failed');
+      return { blob, compressed: true };
+    } catch (error) {
+      // 有些 SVG 会污染画布，或浏览器不支持目标编码；已经解码成功的原图先兜底。
+      // 解码阶段就失败的文件不能兜底，否则会把坏图当成壁纸存下来。
+      if (decoded) {
+        return { blob: source, compressed: false, error };
+      }
+      throw error;
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  async function applyWallpaper(source, { persist = true, recompress = true } = {}) {
+    const mine = ++seq;
+
+    let blob = source;
+    if (recompress) {
+      let result;
+      try {
+        result = await compressWallpaper(source);
+      } catch {
+        if (mine === seq) notify('这张图片无法读取');
+        return false;
+      }
+
+      if (mine !== seq) return false;
+
+      blob = result.blob;
+      if (!result.compressed) notify('图片已应用，但无法压缩，已按原图保存');
     }
 
+    if (mine !== seq) return false;
+
+    const url = URL.createObjectURL(blob);
     if (mine !== seq) {
       URL.revokeObjectURL(url);
-      return false;
-    }
-
-    if (!ok) {
-      URL.revokeObjectURL(url);
-      warn('这张图片无法读取');
       return false;
     }
 
@@ -113,9 +193,9 @@
 
     if (persist) {
       try {
-        await putStoredWallpaper(blob);
+        await queueWrite(() => putStoredWallpaper(blob));
       } catch {
-        warn('已应用，但无法保存');
+        if (mine === seq) notify('壁纸已应用，但无法保存；刷新后会丢失');
       }
     }
 
@@ -123,40 +203,45 @@
   }
 
   async function resetWallpaper() {
-    seq++;
-    if (typeof window.resetWallpaperTone === 'function') {
-      window.resetWallpaperTone();
-    }
+    const mine = ++seq;
+
     if (objectUrl) {
       URL.revokeObjectURL(objectUrl);
       objectUrl = null;
     }
     document.documentElement.style.removeProperty('--wallpaper');
+
     try {
-      await clearStoredWallpaper();
+      await queueWrite(() => clearStoredWallpaper());
     } catch {
-      /* 存储不可用时也允许本页恢复默认 */
+      if (mine === seq) notify('已恢复默认背景，但已保存的壁纸未能清除');
     }
   }
 
   async function restoreWallpaper() {
-    let blob;
+    let stored;
     try {
-      blob = await getStoredWallpaper();
+      stored = readStoredWallpaper(await getStoredWallpaper());
     } catch {
       return;
     }
-    if (!blob || !(blob instanceof Blob)) return;
+    if (!stored) return;
+
     // 用户在读取期间已经开始换背景，就不要用旧图覆盖
     if (seq !== 0) return;
 
-    const mine = seq + 1;
-    const ok = await applyWallpaper(blob, { persist: false });
-    if (!ok && seq === mine) {
+    // 旧版存的是原图，升级后恢复时压一次并回写；新版已处理过的文件直接显示
+    const expected = seq + 1;
+    const ok = await applyWallpaper(stored.blob, {
+      persist: !stored.processed,
+      recompress: !stored.processed,
+    });
+
+    if (!ok && seq === expected) {
       try {
-        await clearStoredWallpaper();
+        await queueWrite(() => clearStoredWallpaper());
       } catch {
-        /* ignore */
+        /* 读不出来的旧图清掉，下次不重复尝试 */
       }
     }
   }
@@ -165,14 +250,16 @@
     const file = fileInput.files && fileInput.files[0];
     fileInput.value = '';
     if (!file) return;
+
     if (file.type && !file.type.startsWith('image/')) {
-      warn('请选择图片文件');
+      notify('请选择图片文件');
       return;
     }
     if (file.size > MAX_BYTES) {
-      warn('图片太大，上限 20MB');
+      notify('图片太大，上限 20MB');
       return;
     }
+
     void applyWallpaper(file);
   });
 

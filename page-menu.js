@@ -9,13 +9,24 @@
 
   const IGNORE = '.search, .clock-container, .menu, .tile-menu, dialog';
   let menuAnchor = null;
+  let menuReturnFocus = null;
+
+  if (typeof setupMenuArrowNavigation === 'function') {
+    setupMenuArrowNavigation(pageMenu, '.tile-menu-item');
+  }
 
   function closePageMenu() {
     if (pageMenu.hidden) return;
     pageMenu.classList.remove('is-open');
     pageMenu.hidden = true;
     menuAnchor = null;
+    menuReturnFocus = null;
     if (trigger) trigger.setAttribute('aria-expanded', 'false');
+  }
+
+  function pageMenuItems() {
+    return [...pageMenu.querySelectorAll('.tile-menu-item')]
+      .filter((item) => !item.hidden && !item.disabled);
   }
 
   function clamp(value, min, max) {
@@ -69,6 +80,12 @@
     pageMenu.style.transformOrigin = `${Math.round(originX)}px ${Math.round(originY)}px`;
 
     menuAnchor = anchor ? trigger : null;
+    menuReturnFocus = anchor
+      ? trigger
+      : (focusFirst && document.activeElement instanceof HTMLElement
+          && document.activeElement !== document.body
+          ? document.activeElement
+          : null);
     if (trigger) trigger.setAttribute('aria-expanded', 'true');
 
     if (!wasOpen) {
@@ -88,7 +105,7 @@
     if (!item) return;
 
     const action = item.dataset.action;
-    const fromTrigger = menuAnchor === trigger;
+    const returnFocus = menuReturnFocus;
     closePageMenu();
 
     if (action === 'add-shortcut') {
@@ -103,8 +120,8 @@
       if (typeof window.resetWallpaper === 'function') window.resetWallpaper();
     }
 
-    // 从按钮打开时，动作结束后把焦点还给按钮；右键打开不抢焦点
-    if (fromTrigger && trigger) trigger.focus({ preventScroll: true });
+    // 按钮或键盘打开时，动作结束后把焦点还给触发元素；鼠标右键打开不抢焦点
+    if (returnFocus) returnFocus.focus({ preventScroll: true });
   });
 
   if (trigger) {
@@ -119,6 +136,23 @@
 
       const rect = trigger.getBoundingClientRect();
       openPageMenu(rect.right, rect.top, event.detail === 0, rect);
+    });
+
+    trigger.addEventListener('keydown', (event) => {
+      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+      if (event.altKey || event.ctrlKey || event.metaKey) return;
+
+      event.preventDefault();
+      if (pageMenu.hidden) {
+        const rect = trigger.getBoundingClientRect();
+        openPageMenu(rect.right, rect.top, false, rect);
+      }
+      if (pageMenu.hidden) return;
+
+      const items = pageMenuItems();
+      if (!items.length) return;
+      const target = event.key === 'ArrowDown' ? items[0] : items[items.length - 1];
+      target.focus({ preventScroll: true });
     });
   }
 
@@ -166,9 +200,9 @@
       if (event.key !== 'Escape' || pageMenu.hidden) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      const fromTrigger = menuAnchor === trigger;
+      const returnFocus = menuReturnFocus;
       closePageMenu();
-      if (fromTrigger && trigger) trigger.focus({ preventScroll: true });
+      if (returnFocus) returnFocus.focus({ preventScroll: true });
     },
     true,
   );

@@ -4,7 +4,7 @@
    壁纸先经过一层 30% 黑色遮罩，UI 全部落在遮罩之上：
    搜索框是 10% 白玻璃 + 1px 白线框，磁贴是 20% 黑底板，
    不再出现刺眼的白色补丁；时钟与标签固定浅色 + 重暗影。
-   CSS 不读像素：tone 由 [data-tone] 提供（当前固定暗色 UI 不依赖）。
+   背景图由 wallpaper.js 写入 --wallpaper；UI 不随壁纸像素变化。
    ============================================================ */
 
 /* 时钟专用字体：Roboto（SIL OFL 1.1，随扩展分发），跨平台渲染一致。
@@ -46,27 +46,8 @@
   --dialog-in: 200ms;
   --dialog-out: 160ms;
 
-  /* 页面环境色：默认深色，和默认暮光渐变一致 */
-  --ui-ink-rgb: 246 248 252;
-  --ui-tone-rgb: 8 10 14;
-  --ui-shadow-a: 0.40;
-
   /* 背景图由 wallpaper.js 写入：url("...") */
   --wallpaper: none;
-}
-
-/* 采样器在 .search / .shortcuts 上写 data-tone；
-   也可以只给 <html> 写，整页统一。 */
-[data-tone="dark"] {
-  --ui-ink-rgb: 246 248 252;
-  --ui-tone-rgb: 8 10 14;
-  --ui-shadow-a: 0.40;
-}
-
-[data-tone="light"] {
-  --ui-ink-rgb: 10 12 16;
-  --ui-tone-rgb: 255 255 255;
-  --ui-shadow-a: 0.16;
 }
 
 * {

@@ -19,8 +19,8 @@ SharkTab 把新标签页收拢成以搜索为中心的起始页：顶部是时�
 - **时间与日期**：Roboto 数字 + 24 小时制、星期、农历，只在分钟变化时更新。
 - **多引擎搜索**：Bing / Google / 百度 随时切换，选择会记住；搜索在新标签页打开，原新标签页保留。
 - **快捷入口**：8 列网格（窄屏 6 列），支持添加、编辑、删除、长按拖动排序；超过 2 行自动折叠，底部箭头展开 / 收起。
-- **图标自动识别**：优先读取浏览器 favicon 缓存，其次站点 `favicon.ico`，再次 `icon.horse`；失败显示首字母色块，也可以上传自己的图标。
-- **自定义壁纸**：本地图片存入 IndexedDB，刷新自动恢复；壁纸之上有 30% 暗色遮罩，界面使用低透明度暗玻璃表面。
+- **图标自动识别**：优先读取浏览器 favicon 缓存，其次站点 `favicon.ico`，再次 `icon.horse`；失败显示首字母色块并缓存 30 分钟，也可以上传自己的图标。
+- **自定义壁纸**：上传后按显示上限缩放并压缩为 WebP，再存入 IndexedDB，刷新自动恢复；壁纸之上有 30% 暗色遮罩，界面使用低透明度暗玻璃表面。
 - **页面操作**：右下角常驻「···」入口，随时新增快捷入口 / 更换壁纸 / 恢复默认背景；空白处右键仍然可用。
 - **右键与快捷键**：磁贴右键可打开、复制链接、编辑、删除；`/` 聚焦搜索框，`Esc` 关闭菜单 / 清空输入。
 
@@ -46,7 +46,8 @@ git clone https://github.com/Chen1shark/SharkTab.git
 | `Enter` | 用当前引擎搜索，结果在新标签页打开 |
 | 点击快捷入口 | 在新标签页打开，不替换当前新标签页 |
 | `/` | 聚焦搜索框 |
-| `Esc` | 关闭引擎菜单 → 清空输入 → 失焦 |
+| `Esc` | 关闭菜单并把焦点还给触发元素；无菜单时清空输入 / 失焦 |
+| 菜单内 `↑` `↓` `Home` `End` | 在可见菜单项之间移动焦点 |
 | 右侧引擎按钮 | 在 Bing / Google / 百度 间切换 |
 | 磁贴右键 | 在新标签页打开 / 复制链接 / 编辑 / 删除 |
 | 右下角「···」 | 新增快捷入口 / 更换壁纸 / 恢复默认背景 |
@@ -83,9 +84,8 @@ SharkTab 不收集、不上传任何个人数据，没有分析、遥测或广�
 | `styles.css` | 暗玻璃视觉、壁纸遮罩、网格与弹窗样式 |
 | `app.js` | 搜索引擎、搜索提交、快捷键、快捷入口增删改查与拖动 |
 | `clock.js` | 时间、星期与农历格式化 |
-| `wallpaper.js` | 壁纸上传、IndexedDB 存取、刷新恢复 |
-| `wallpaper-tone.js` | 壁纸采样与 `data-tone` 标记 |
-| `page-menu.js` | 空白处右键菜单 |
+| `wallpaper.js` | 壁纸压缩、串行写入、IndexedDB 存取、刷新恢复 |
+| `page-menu.js` | 空白处右键与右下角「···」页面菜单 |
 | `icons/app/` | 扩展自身图标：16 / 32 / 48 / 128px |
 | `icons/engines/` | 搜索引擎标识（Bing / Google / 百度） |
 | `fonts/` | 时钟数字使用的 Roboto 字体（SIL OFL 1.1）与许可证 |
@@ -101,13 +101,15 @@ SharkTab 不收集、不上传任何个人数据，没有分析、遥测或广�
 | 快捷入口 | `localStorage` · `sharktab.shortcuts.v1` |
 | 搜索引擎 | `localStorage` · `sharktab.engine` |
 | 站点图标缓存 | `localStorage` · `sharktab.icons.v2`（60 天、最多 80 条） |
-| 自定义壁纸 | IndexedDB · `sharktab` / `wallpaper` |
+| 图标失败记录 | `localStorage` · `sharktab.iconFailures.v1`（30 分钟、最多 80 条） |
+| 自定义壁纸 | IndexedDB · `sharktab` / `wallpaper`（压缩后的 WebP） |
 
 想恢复默认设置，可在新标签页 DevTools 中执行：
 
 ```js
 localStorage.removeItem('sharktab.shortcuts.v1');
 localStorage.removeItem('sharktab.icons.v2');
+localStorage.removeItem('sharktab.iconFailures.v1');
 localStorage.removeItem('sharktab.engine');
 ```
 

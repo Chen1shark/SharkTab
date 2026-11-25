@@ -79,10 +79,14 @@ function getEngine() {
 }
 
 function setEngine(id) {
+  let saved = true;
   try {
     localStorage.setItem(STORAGE_KEY, id);
-  } catch (_) { /* 忽略写入失败 */ }
+  } catch (_) {
+    saved = false;
+  }
   syncEngine();
+  if (!saved) showToast('搜索引擎选择未能保存');
 }
 
 function syncEngine() {
@@ -141,6 +145,33 @@ function closeMenu() {
   engineBtn.setAttribute('aria-expanded', 'false');
 }
 
+/* 三个菜单共用：方向键 / Home / End 在可见菜单项之间移动焦点。
+ * 不改 tabindex，保留原生按钮的 Enter / Space 行为。 */
+function setupMenuArrowNavigation(menu, itemSelector) {
+  menu.addEventListener('keydown', (event) => {
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+
+    const items = [...menu.querySelectorAll(itemSelector)]
+      .filter((item) => !item.hidden && !item.disabled);
+    if (!items.length) return;
+
+    event.preventDefault();
+    const current = items.indexOf(document.activeElement);
+    let next;
+
+    if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = items.length - 1;
+    else if (event.key === 'ArrowDown') {
+      next = current < 0 ? 0 : (current + 1) % items.length;
+    } else {
+      next = current <= 0 ? items.length - 1 : current - 1;
+    }
+
+    items[next].focus({ preventScroll: true });
+  });
+}
+
 /* ---------- 输入处理 ---------- */
 
 function submit() {
@@ -171,6 +202,25 @@ engineBtn.addEventListener('click', (event) => {
   event.stopPropagation();
   if (engineMenu.hidden) openMenu();
   else closeMenu();
+});
+
+// 焦点还在触发按钮时，方向键先把焦点送进菜单，而不是停在按钮上
+engineBtn.addEventListener('keydown', (event) => {
+  if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+  if (event.altKey || event.ctrlKey || event.metaKey) return;
+
+  event.preventDefault();
+  if (engineMenu.hidden) openMenu();
+
+  const items = [...engineMenu.querySelectorAll('.menu-item')]
+    .filter((item) => !item.hidden && !item.disabled);
+  if (!items.length) return;
+
+  const selected = engineMenu.querySelector('.menu-item[aria-selected="true"]');
+  const target = event.key === 'ArrowUp'
+    ? items[items.length - 1]
+    : (selected || items[0]);
+  target.focus({ preventScroll: true });
 });
 
 document.addEventListener('click', (event) => {
@@ -215,6 +265,7 @@ let shortcuts = loadShortcuts();
 let editingId = null;
 let nameAutoFilled = false;
 let previewTimer = 0;
+let previewFillSeq = 0;
 let currentIcon = '';
 let menuShortcut = null;
 let pendingDelete = null;
@@ -265,7 +316,9 @@ function loadShortcuts() {
 function saveShortcuts() {
   try {
     localStorage.setItem(SHORTCUTS_KEY, JSON.stringify(shortcuts));
-  } catch (_) { /* 存储不可用时本次修改不持久化 */ }
+  } catch (_) {
+    showToast('修改未能保存，刷新后会丢失');
+  }
 }
 
 function makeId() {
@@ -416,8 +469,10 @@ function deriveName(url) {
   }
 }
 
-/* 输入网址后回显识别结果：图标 + 名称 */
+/* 输入网址后回显识别结果：图标 + 名称。
+ * 每次回显拿一个序号；旧请求即使晚到，也不再覆盖新网址的图标。 */
 function updatePreview() {
+  const token = ++previewFillSeq;
   const url = normalizeUrl(scUrl.value);
   if (!url) {
     preview.hidden = true;
@@ -439,6 +494,7 @@ function updatePreview() {
   previewText.textContent = currentIcon.startsWith('data:')
     ? `自定义图标 · ${host}`
     : `已识别 ${host}`;
+  previewIcon.replaceChildren();
   fillIcon(
     previewIcon,
     {
@@ -446,8 +502,11 @@ function updatePreview() {
       name: deriveName(url),
       icon: currentIcon,
     },
-    // 表单回显不要先露首字母：等真实图标出来再显示
-    { showBadgeWhileLoading: false }
+    {
+      // 表单回显不要先露首字母：等真实图标出来再显示
+      showBadgeWhileLoading: false,
+      isCurrent: () => token === previewFillSeq,
+    }
   );
   syncIconControls();
 
@@ -524,7 +583,13 @@ const ICON_CACHE_KEY = 'sharktab.icons.v2';
 const ICON_CACHE_TTL = 60 * 24 * 60 * 60 * 1000;
 const ICON_CACHE_LIMIT = 80;
 
+/* 失败结果只记 30 分钟：域名换图标、网络临时故障之后还能自动重试 */
+const ICON_FAIL_KEY = 'sharktab.iconFailures.v1';
+const ICON_FAIL_TTL = 30 * 60 * 1000;
+const ICON_FAIL_LIMIT = 80;
+
 const iconCache = loadIconCache();
+const iconFailures = loadIconFailures();
 let iconCacheTimer = 0;
 
 function hostOf(url) {
@@ -567,6 +632,58 @@ function saveIconCache() {
   try {
     localStorage.setItem(ICON_CACHE_KEY, JSON.stringify(iconCache));
   } catch (_) { /* 配额不足时只在本次会话内缓存 */ }
+}
+
+function loadIconFailures() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(ICON_FAIL_KEY) || '{}');
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+
+    const now = Date.now();
+    const kept = {};
+    for (const [host, until] of Object.entries(parsed)) {
+      if (typeof until === 'number' && until > now) kept[host] = until;
+    }
+    return kept;
+  } catch (_) {
+    return {};
+  }
+}
+
+function saveIconFailures() {
+  try {
+    localStorage.setItem(ICON_FAIL_KEY, JSON.stringify(iconFailures));
+  } catch (_) { /* 失败缓存只是加速，写不进去就算了 */ }
+}
+
+function iconFailureFresh(host) {
+  if (!host) return false;
+  const until = iconFailures[host];
+  if (!until) return false;
+  if (until > Date.now()) return true;
+
+  delete iconFailures[host];
+  saveIconFailures();
+  return false;
+}
+
+function markIconFailure(host) {
+  if (!host) return;
+
+  iconFailures[host] = Date.now() + ICON_FAIL_TTL;
+  const kept = Object.entries(iconFailures)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, ICON_FAIL_LIMIT);
+
+  for (const key of Object.keys(iconFailures)) delete iconFailures[key];
+  for (const [key, until] of kept) iconFailures[key] = until;
+  saveIconFailures();
+}
+
+function clearIconFailure(host) {
+  if (!host || !iconFailures[host]) return;
+  delete iconFailures[host];
+  saveIconFailures();
 }
 
 /* 同源图片才能导出字节；跨源会抛 SecurityError，返回空串 */
@@ -731,10 +848,14 @@ function badgeFor(sc) {
  * 表单里的回显则关掉占位（showBadgeWhileLoading: false），等真实图标出来再显示。 */
 function fillIcon(container, sc, options = {}) {
   const showBadgeWhileLoading = options.showBadgeWhileLoading !== false;
+  const isCurrent = typeof options.isCurrent === 'function' ? options.isCurrent : null;
+  if (isCurrent && !isCurrent()) return;
+
   const host = hostOf(sc.url);
 
   // 手动上传的图标本身就是 data URL，不需要联网
   if (sc.icon) {
+    clearIconFailure(host);
     container.replaceChildren(iconElement(sc.icon));
     return;
   }
@@ -742,7 +863,14 @@ function fillIcon(container, sc, options = {}) {
   const cached = host ? iconCache[host] : null;
 
   if (cached && cached.data) {
+    clearIconFailure(host);
     container.replaceChildren(iconElement(cached.data));
+    return;
+  }
+
+  if (iconFailureFresh(host)) {
+    // 已知失败：先给色块，不再让每个新标签页都白等一轮超时
+    container.replaceChildren(badgeFor(sc));
     return;
   }
 
@@ -757,20 +885,30 @@ function fillIcon(container, sc, options = {}) {
 
   (async () => {
     for (const source of sources) {
+      if (isCurrent && !isCurrent()) return;
+
       let result;
       try {
         result = await loadIconSource(source);
       } catch (_) {
+        if (isCurrent && !isCurrent()) return;
         continue;
       }
 
+      // 预览网址已经变了：旧结果直接丢掉，不覆盖新图标
+      if (isCurrent && !isCurrent()) return;
+
       container.replaceChildren(result.img);
+      clearIconFailure(host);
       rememberIcon(host, { src: sourceUrl(source) });
       if (result.data) rememberIcon(host, { data: result.data });
       return;
     }
 
-    // 所有来源都失败：此时才退回首字母色块
+    if (isCurrent && !isCurrent()) return;
+
+    // 所有来源都失败：记下 30 分钟，并退回首字母色块
+    markIconFailure(host);
     container.replaceChildren(badgeFor(sc));
   })();
 }
@@ -1276,6 +1414,11 @@ function showToast(message) {
   }, 1600);
 }
 
+function findShortcutTile(id) {
+  return [...shortcutsEl.querySelectorAll('.shortcut[data-shortcut-id]')]
+    .find((item) => item.dataset.shortcutId === id) || null;
+}
+
 /* 自定义右键菜单盖掉了浏览器的「复制链接地址」，这里补回来。
  * 优先异步 Clipboard API；扩展页没有焦点或权限受限时退回 execCommand。 */
 async function copyShortcutLink(sc) {
@@ -1310,8 +1453,7 @@ async function copyShortcutLink(sc) {
   showToast(copied ? '已复制链接' : '复制失败，请手动复制');
 
   // 菜单项消失后把焦点还给原磁贴，键盘操作不丢位置
-  const tile = [...shortcutsEl.querySelectorAll('.shortcut[data-shortcut-id]')]
-    .find((item) => item.dataset.shortcutId === sc.id);
+  const tile = findShortcutTile(sc.id);
   if (tile) tile.focus({ preventScroll: true });
 }
 
@@ -1358,8 +1500,10 @@ function resetForm() {
   nameAutoFilled = false;
   currentIcon = '';
   clearTimeout(previewTimer);
+  previewFillSeq++;
   managerForm.reset();
   preview.hidden = true;
+  previewIcon.replaceChildren();
   formTitle.textContent = '添加快捷入口';
   saveBtn.textContent = '添加';
   cancelEdit.hidden = true;
@@ -1559,7 +1703,15 @@ manager.addEventListener('pointerdown', (event) => closeOnBackdrop(event, manage
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && !tileMenu.hidden) {
     event.preventDefault();
+    const fromMenu = tileMenu.contains(document.activeElement);
+    const sc = menuShortcut;
     closeTileMenu();
+
+    // 从菜单里退出时把焦点还给原磁贴；鼠标右键打开则不抢焦点
+    if (fromMenu && sc) {
+      const tile = findShortcutTile(sc.id);
+      if (tile) tile.focus({ preventScroll: true });
+    }
     return;
   }
 
@@ -1567,7 +1719,9 @@ document.addEventListener('keydown', (event) => {
 
   if (event.key === 'Escape') {
     if (!engineMenu.hidden) {
+      const fromMenu = engineMenu.contains(document.activeElement);
       closeMenu();
+      if (fromMenu) engineBtn.focus({ preventScroll: true });
     } else if (document.activeElement === input) {
       if (input.value) input.value = '';
       else input.blur();
@@ -1583,6 +1737,8 @@ document.addEventListener('keydown', (event) => {
 
 /* ---------- 初始化 ---------- */
 
+setupMenuArrowNavigation(engineMenu, '.menu-item');
+setupMenuArrowNavigation(tileMenu, '.tile-menu-item');
 buildMenu();
 syncEngine();
 renderShortcuts();
