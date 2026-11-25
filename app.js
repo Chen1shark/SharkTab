@@ -209,6 +209,7 @@ const previewText = document.getElementById('previewText');
 const iconUpload = document.getElementById('iconUpload');
 const iconReset = document.getElementById('iconReset');
 const iconFile = document.getElementById('iconFile');
+const toastEl = document.getElementById('toast');
 
 let shortcuts = loadShortcuts();
 let editingId = null;
@@ -218,6 +219,8 @@ let currentIcon = '';
 let menuShortcut = null;
 let pendingDelete = null;
 let managerResetTimer = 0;
+let toastTimer = 0;
+let toastHideTimer = 0;
 
 function normalizeUrl(raw) {
   const text = raw.trim();
@@ -1253,6 +1256,65 @@ function openInNewTab(url) {
   window.open(url, '_blank', 'noopener,noreferrer');
 }
 
+/* 底部一次性提示，连续触发时重置计时并重新淡入 */
+function showToast(message) {
+  if (!toastEl) return;
+
+  clearTimeout(toastTimer);
+  clearTimeout(toastHideTimer);
+  toastEl.textContent = message;
+  toastEl.hidden = false;
+  toastEl.classList.remove('is-visible');
+  void toastEl.offsetWidth;
+  toastEl.classList.add('is-visible');
+
+  toastTimer = window.setTimeout(() => {
+    toastEl.classList.remove('is-visible');
+    toastHideTimer = window.setTimeout(() => {
+      toastEl.hidden = true;
+    }, 180);
+  }, 1600);
+}
+
+/* 自定义右键菜单盖掉了浏览器的「复制链接地址」，这里补回来。
+ * 优先异步 Clipboard API；扩展页没有焦点或权限受限时退回 execCommand。 */
+async function copyShortcutLink(sc) {
+  let copied = false;
+
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(sc.url);
+      copied = true;
+    }
+  } catch (_) { /* 走下面的兜底 */ }
+
+  if (!copied) {
+    const area = document.createElement('textarea');
+    area.value = sc.url;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.top = '0';
+    area.style.left = '-9999px';
+    area.style.opacity = '0';
+    document.body.append(area);
+    area.select();
+    area.setSelectionRange(0, area.value.length);
+    try {
+      copied = document.execCommand('copy');
+    } catch (_) {
+      copied = false;
+    }
+    area.remove();
+  }
+
+  showToast(copied ? '已复制链接' : '复制失败，请手动复制');
+
+  // 菜单项消失后把焦点还给原磁贴，键盘操作不丢位置
+  const tile = [...shortcutsEl.querySelectorAll('.shortcut[data-shortcut-id]')]
+    .find((item) => item.dataset.shortcutId === sc.id);
+  if (tile) tile.focus({ preventScroll: true });
+}
+
 tileMenu.addEventListener('click', (event) => {
   const item = event.target.closest('.tile-menu-item');
   if (!item || !menuShortcut) return;
@@ -1262,6 +1324,7 @@ tileMenu.addEventListener('click', (event) => {
   closeTileMenu();
 
   if (action === 'open') openInNewTab(sc.url);
+  else if (action === 'copy-link') copyShortcutLink(sc);
   else if (action === 'edit') editShortcut(sc);
   else if (action === 'delete') askDeleteShortcut(sc);
 });

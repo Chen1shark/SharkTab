@@ -533,6 +533,52 @@ body::before {
   transform: rotate(180deg);
 }
 
+/* 右下角页面操作入口：常态几乎退到背景里，只在靠近时变亮 */
+.page-more {
+  position: fixed;
+  right: max(20px, env(safe-area-inset-right));
+  bottom: max(20px, env(safe-area-inset-bottom));
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.42);
+  cursor: pointer;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.45));
+  transition:
+    color 140ms ease,
+    background-color 140ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .page-more:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.82);
+  }
+}
+
+.page-more:focus-visible {
+  outline: 1px solid rgba(255, 255, 255, 0.35);
+  outline-offset: 3px;
+}
+
+.page-more[aria-expanded="true"] {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.page-more svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+  stroke: none;
+}
+
 .shortcut {
   position: relative;
   display: grid;
@@ -1177,12 +1223,13 @@ dialog.confirm[open]::backdrop {
   transition: background-color 140ms ease;
 }
 
-/* 第一项和其余项之间：一条极细分隔线 + 一点呼吸间距 */
-.tile-menu-item:nth-child(2) {
+/* 分组之间：一条极细分隔线 + 一点呼吸间距。
+ * 用显式类而不是 nth-child，菜单项增减或隐藏时不会错位。 */
+.tile-menu-item.is-separated {
   margin-top: 7px;
 }
 
-.tile-menu-item:nth-child(2)::before {
+.tile-menu-item.is-separated::before {
   content: "";
   position: absolute;
   top: -4px;
@@ -1208,6 +1255,41 @@ dialog.confirm[open]::backdrop {
 .tile-menu-item:hover,
 .tile-menu-item:focus-visible {
   background: rgba(255, 255, 255, 0.10);
+}
+
+/* 复制结果等一次性反馈：底部居中，自动消失，不挡操作 */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  z-index: 210;
+  padding: 9px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  background: rgba(20, 20, 20, 0.78);
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(16px) saturate(1.1);
+  color: rgba(255, 255, 255, 0.90);
+  font-size: 12.5px;
+  line-height: 1;
+  white-space: nowrap;
+  transform: translate(-50%, 10px);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 160ms ease,
+    transform 180ms var(--ease-out);
+}
+
+.toast.is-visible {
+  transform: translate(-50%, 0);
+  opacity: 1;
+}
+
+.toast[hidden] {
+  display: none;
 }
 
 .manager-form {
@@ -1521,5 +1603,10 @@ dialog.confirm[open]::backdrop {
 
   .shortcut {
     transition: none;
+  }
+
+  .toast {
+    transform: translate(-50%, 0);
+    transition: opacity 120ms linear;
   }
 }
