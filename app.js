@@ -600,10 +600,32 @@ function hostOf(url) {
   }
 }
 
+function freshIconEntry(entry) {
+  if (!entry || typeof entry !== 'object') return false;
+  if (typeof entry.at !== 'number' || entry.at <= Date.now() - ICON_CACHE_TTL) return false;
+
+  const hasData = typeof entry.data === 'string' && entry.data.startsWith('data:image/');
+  const hasSrc = typeof entry.src === 'string' && /^(https?:|chrome-extension:)/.test(entry.src);
+  return hasData || hasSrc;
+}
+
 function loadIconCache() {
   try {
     const parsed = JSON.parse(localStorage.getItem(ICON_CACHE_KEY) || '{}');
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+
+    // 过期条目在读取时就丢掉，否则命中缓存后不再联网，清理逻辑永远不会触发
+    const cleaned = {};
+    for (const [host, entry] of Object.entries(parsed)) {
+      if (host && freshIconEntry(entry)) cleaned[host] = entry;
+    }
+
+    if (Object.keys(cleaned).length !== Object.keys(parsed).length) {
+      try {
+        localStorage.setItem(ICON_CACHE_KEY, JSON.stringify(cleaned));
+      } catch (_) { /* 清理失败不影响本次会话 */ }
+    }
+    return cleaned;
   } catch (_) {
     return {};
   }
@@ -620,9 +642,8 @@ function rememberIcon(host, patch) {
 }
 
 function saveIconCache() {
-  const cutoff = Date.now() - ICON_CACHE_TTL;
   const kept = Object.entries(iconCache)
-    .filter(([, entry]) => entry && typeof entry.at === 'number' && entry.at > cutoff)
+    .filter(([, entry]) => freshIconEntry(entry))
     .sort((a, b) => b[1].at - a[1].at)
     .slice(0, ICON_CACHE_LIMIT);
 
@@ -860,7 +881,9 @@ function fillIcon(container, sc, options = {}) {
     return;
   }
 
-  const cached = host ? iconCache[host] : null;
+  const cachedEntry = host ? iconCache[host] : null;
+  const cached = cachedEntry && freshIconEntry(cachedEntry) ? cachedEntry : null;
+  if (host && cachedEntry && !cached) delete iconCache[host];
 
   if (cached && cached.data) {
     clearIconFailure(host);
@@ -931,7 +954,7 @@ function buildTile(sc) {
   label.className = 'shortcut-label';
   label.textContent = sc.name;
 
-  // 长按 400ms 后可以拖动，交换两个磁贴的位置
+  // 鼠标移动超过阈值即可拖动；触摸 / 手写笔长按 400ms 后拖动
   link.addEventListener('pointerdown', (event) => beginShortcutPress(link, event));
   link.addEventListener('dragstart', (event) => event.preventDefault());
 
@@ -986,6 +1009,14 @@ let shortcutsHeightTimer = 0;
 let shortcutsResizeTimer = 0;
 let shortcutsAnimating = false;
 
+/* 展开时允许整页滚动；收起或数量不足时立刻复位，避免时钟被永久裁在视口外 */
+function setShortcutsScrollEnabled(enabled) {
+  document.body.classList.toggle('is-shortcuts-expanded', enabled);
+  if (enabled) return;
+  document.body.scrollTop = 0;
+  document.documentElement.scrollTop = 0;
+}
+
 // 列数由 CSS 变量提供：大屏 8 列，窄屏 6 列；收起状态固定为 2 行
 function shortcutsColumns() {
   const raw = getComputedStyle(shortcutsEl).getPropertyValue('--shortcut-columns').trim();
@@ -1013,6 +1044,8 @@ function syncShortcutsLayout(animate = false) {
   const limit = shortcutsVisibleLimit();
   const canExpand = total > limit;
   if (!canExpand) shortcutsExpanded = false;
+
+  setShortcutsScrollEnabled(shortcutsExpanded && canExpand);
 
   // 不足 5 个图标（含末尾「＋」）时整组居中，否则一律左对齐
   shortcutsEl.classList.toggle('is-sparse', total < 5);
@@ -1091,9 +1124,10 @@ window.addEventListener('resize', () => {
   shortcutsResizeTimer = window.setTimeout(() => syncShortcutsLayout(), 150);
 });
 
-/* ---------- 长按拖动排序 ---------- */
+/* ---------- 拖动排序 ---------- */
 
 const LONG_PRESS_MS = 400;
+const MOUSE_DRAG_PX = 6;
 const DRAG_CANCEL_PX = 8;
 
 let shortcutDrag = null;
@@ -1116,7 +1150,10 @@ function beginShortcutPress(link, event) {
   };
 
   shortcutDrag = state;
-  state.timer = window.setTimeout(() => startShortcutDrag(state), LONG_PRESS_MS);
+  // 鼠标按移动距离判定，触摸 / 手写笔仍用长按，避免和页面滚动抢手势
+  if (event.pointerType !== 'mouse') {
+    state.timer = window.setTimeout(() => startShortcutDrag(state), LONG_PRESS_MS);
+  }
 
   window.addEventListener('pointermove', onShortcutDragMove, { passive: false });
   window.addEventListener('pointerup', onShortcutDragEnd);
@@ -1259,10 +1296,18 @@ function onShortcutDragMove(event) {
   if (!state.dragging) {
     const dx = event.clientX - state.startX;
     const dy = event.clientY - state.startY;
-    if (dx * dx + dy * dy > DRAG_CANCEL_PX * DRAG_CANCEL_PX) {
+    const mouse = event.pointerType === 'mouse';
+    const threshold = mouse ? MOUSE_DRAG_PX : DRAG_CANCEL_PX;
+    if (dx * dx + dy * dy <= threshold * threshold) return;
+
+    // 触摸 / 手写笔移动多半是想滚页面，超过阈值就放弃按压；鼠标直接开始拖
+    if (!mouse) {
       clearShortcutPress(state);
+      return;
     }
-    return;
+
+    startShortcutDrag(state);
+    if (!state.dragging) return;
   }
 
   event.preventDefault();
@@ -1412,6 +1457,18 @@ function showToast(message) {
       toastEl.hidden = true;
     }, 180);
   }, 1600);
+}
+
+/* 立即收起提示：用于「正在处理」这类过程文案，任务完成时不该继续挂着 */
+function hideToast() {
+  if (!toastEl) return;
+
+  clearTimeout(toastTimer);
+  clearTimeout(toastHideTimer);
+  toastEl.classList.remove('is-visible');
+  toastHideTimer = window.setTimeout(() => {
+    toastEl.hidden = true;
+  }, 180);
 }
 
 function findShortcutTile(id) {

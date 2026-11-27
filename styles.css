@@ -59,14 +59,7 @@
 html {
   height: 100%;
   color-scheme: light dark;
-  background: #0a0f24;
-}
-
-body {
-  height: 100%;
-  overflow: hidden;
-  font-family: var(--font-ui);
-  color: rgba(255, 255, 255, 0.92);
+  /* 背景挂在根元素上，展开滚动时仍铺满视口，不会在第一屏底部断掉 */
   background-color: #0a0f24;
   background-image:
     var(--wallpaper),
@@ -77,6 +70,37 @@ body {
   background-position: center, 0 0, 0 0, 0 0, 0 0;
   background-size: cover, auto, auto, auto, auto;
   background-repeat: no-repeat;
+  /* 根元素背景默认随文档滚走，固定到视口才能盖住展开后的整页 */
+  background-attachment: fixed;
+}
+
+body {
+  height: 100%;
+  /* 折叠态不滚动；展开后由 JS 打开页面滚动，避免多行磁贴被裁在视口外 */
+  overflow: hidden;
+  font-family: var(--font-ui);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+/* 快捷入口展开后内容可能超出视口，此时允许整页滚动；折叠态保持无滚动条 */
+body.is-shortcuts-expanded {
+  overflow-y: auto;
+}
+
+/* 展开时滚动的是视口，滚动条细化为暗玻璃风格 */
+html::-webkit-scrollbar {
+  width: 10px;
+}
+
+html::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+html::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 /* 全局压暗层：压在壁纸/渐变之上、所有 UI 之下，复杂底图不再抢画面 */

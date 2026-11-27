@@ -160,7 +160,7 @@
     }
   }
 
-  async function applyWallpaper(source, { persist = true, recompress = true } = {}) {
+  async function applyWallpaper(source, { persist = true, recompress = true, progress = false } = {}) {
     const mine = ++seq;
 
     let blob = source;
@@ -174,6 +174,9 @@
       }
 
       if (mine !== seq) return false;
+
+      // 压缩完成就收起「正在处理」，后面的保存失败提示不会再被它覆盖
+      if (progress && typeof window.hideToast === 'function') window.hideToast();
 
       blob = result.blob;
       if (!result.compressed) notify('图片已应用，但无法压缩，已按原图保存');
@@ -260,7 +263,9 @@
       return;
     }
 
-    void applyWallpaper(file);
+    // 大图解码 / 压缩需要一点时间，先给用户一个已经收到的反馈
+    notify('正在处理壁纸…');
+    void applyWallpaper(file, { progress: true });
   });
 
   window.hasWallpaper = () => Boolean(objectUrl);
