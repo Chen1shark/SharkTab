@@ -241,6 +241,14 @@ body::before {
   user-select: none;
 }
 
+/* 中西文混排：西文名沿用正文的 Segoe 时字重偏细、字高偏小，和两侧汉字像两种字体。
+ * 让名字直接走中文回退字体（雅黑 / 苹方），字形、字重和基线都与汉字一致，
+ * 中文名字（百度）本来就命中这一族，不会产生变化。 */
+.search-hint-name {
+  font-family: "Microsoft YaHei", "Microsoft YaHei UI", "PingFang SC",
+    "Hiragino Sans GB", "Noto Sans CJK SC", sans-serif;
+}
+
 #query:not(:placeholder-shown) + .search-hint {
   opacity: 0;
 }

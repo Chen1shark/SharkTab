@@ -9,7 +9,7 @@ const DEFAULT_ENGINE = 'bing';
 
 const form = document.getElementById('searchForm');
 const input = document.getElementById('query');
-const hint = document.getElementById('searchHint');
+const hintName = document.getElementById('searchHintName');
 const clearBtn = document.getElementById('clearBtn');
 const engineBtn = document.getElementById('engineBtn');
 const engineIconSlot = document.getElementById('engineIcon');
@@ -93,7 +93,7 @@ function syncEngine() {
   const engine = getEngine();
   engineIconSlot.replaceChildren(makeEngineLogo(engine));
   engineBtn.setAttribute('aria-label', `切换搜索引擎，当前 ${engine.name}`);
-  hint.textContent = `在 ${engine.name} 中搜索`;
+  hintName.textContent = engine.name;
 
   for (const item of engineMenu.children) {
     item.setAttribute('aria-selected', String(item.dataset.id === engine.id));
