@@ -806,8 +806,8 @@ body.is-shortcut-dragging .shortcut.is-drag-source::after {
   opacity: 0;
 }
 
-/* 页面右键菜单：没有自定义壁纸时隐藏「恢复默认背景」 */
-.page-menu .tile-menu-item[hidden] {
+/* 菜单按场景显隐；display:flex 会覆盖原生 [hidden]，这里显式收掉 */
+.tile-menu .tile-menu-item[hidden] {
   display: none;
 }
 
@@ -1260,6 +1260,24 @@ dialog.confirm[open]::backdrop {
 .tile-menu-item:hover,
 .tile-menu-item:focus-visible {
   background: rgba(255, 255, 255, 0.10);
+}
+
+/* 没有选区时「剪切 / 复制」保持可见但不可用，和系统编辑菜单一致 */
+.tile-menu-item:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.tile-menu-item:disabled:hover {
+  background: none;
+}
+
+.tile-menu-item[data-action="toggle-shortcuts"] .tile-menu-icon {
+  transition: transform 160ms var(--ease-out);
+}
+
+.tile-menu-item[data-action="toggle-shortcuts"].is-expanded .tile-menu-icon {
+  transform: rotate(180deg);
 }
 
 /* 复制结果等一次性反馈：底部居中，自动消失，不挡操作 */

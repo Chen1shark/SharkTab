@@ -983,13 +983,6 @@ function buildAddTile() {
   btn.innerHTML =
     '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6 V18 M6 12 H18" /></svg>';
   btn.addEventListener('click', openManager);
-  // 「＋」磁贴的右键与左键同义：直接进入新建面板，不弹自己那套菜单
-  btn.addEventListener('contextmenu', (event) => {
-    event.preventDefault();
-    closeMenu();
-    closeTileMenu();
-    openManager();
-  });
   return btn;
 }
 

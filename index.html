@@ -174,11 +174,31 @@
   </div>
 
   <div class="tile-menu page-menu" id="pageMenu" role="menu" aria-label="页面操作" hidden>
+    <button type="button" class="tile-menu-item" role="menuitem" data-action="copy-time" hidden>
+      <svg class="tile-menu-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="8" />
+        <path d="M12 8 V12 L15.5 14" />
+      </svg>
+      <span>复制时间</span>
+    </button>
+    <button type="button" class="tile-menu-item" role="menuitem" data-action="copy-date" hidden>
+      <svg class="tile-menu-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="4" y="5" width="16" height="15" rx="2" />
+        <path d="M8 3 V7 M16 3 V7 M4 10 H20" />
+      </svg>
+      <span>复制日期</span>
+    </button>
     <button type="button" class="tile-menu-item" role="menuitem" data-action="add-shortcut">
       <svg class="tile-menu-icon" viewBox="0 0 24 24" aria-hidden="true">
         <path d="M12 6 V18 M6 12 H18" />
       </svg>
       <span>新增快捷入口</span>
+    </button>
+    <button type="button" class="tile-menu-item is-separated" role="menuitem" data-action="toggle-shortcuts" hidden>
+      <svg class="tile-menu-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M6 9 L12 15 L18 9" />
+      </svg>
+      <span id="toggleShortcutsLabel">展开全部快捷入口</span>
     </button>
     <button type="button" class="tile-menu-item is-separated" role="menuitem" data-action="change-wallpaper">
       <svg class="tile-menu-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -194,6 +214,59 @@
         <path d="M4.5 10 A8 8 0 1 1 6.8 17.2" />
       </svg>
       <span>恢复默认背景</span>
+    </button>
+  </div>
+
+  <div class="tile-menu edit-menu" id="editMenu" role="menu" aria-label="文字操作" hidden>
+    <button type="button" class="tile-menu-item" role="menuitem" data-action="cut">
+      <svg class="tile-menu-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="6.5" cy="7" r="2.5" />
+        <circle cx="6.5" cy="17" r="2.5" />
+        <path d="M8.5 8.5 L20 18 M20 6 L8.5 15.5" />
+      </svg>
+      <span>剪切</span>
+    </button>
+    <button type="button" class="tile-menu-item" role="menuitem" data-action="copy">
+      <svg class="tile-menu-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="8" y="8" width="11" height="12" rx="2" />
+        <path d="M16 8 V6 a2 2 0 0 0 -2 -2 H6 a2 2 0 0 0 -2 2 V16 a2 2 0 0 0 2 2 H8" />
+      </svg>
+      <span>复制</span>
+    </button>
+    <button type="button" class="tile-menu-item" role="menuitem" data-action="paste">
+      <svg class="tile-menu-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="5" y="5" width="14" height="16" rx="2" />
+        <path d="M9 5 V4 a1 1 0 0 1 1 -1 H14 a1 1 0 0 1 1 1 V5" />
+        <path d="M9 11 H15 M9 15 H15" />
+      </svg>
+      <span>粘贴</span>
+    </button>
+  </div>
+
+  <div class="tile-menu icon-menu" id="iconMenu" role="menu" aria-label="图标操作" hidden>
+    <button type="button" class="tile-menu-item" role="menuitem" data-action="upload-icon">
+      <svg class="tile-menu-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 16 V4" />
+        <path d="M7.5 8.5 L12 4 L16.5 8.5" />
+        <path d="M4 15 V18 a2 2 0 0 0 2 2 H18 a2 2 0 0 0 2 -2 V15" />
+      </svg>
+      <span>上传图标</span>
+    </button>
+    <button type="button" class="tile-menu-item is-separated" role="menuitem" data-action="reset-icon" hidden>
+      <svg class="tile-menu-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 4 V10 H10" />
+        <path d="M4.5 10 A8 8 0 1 1 6.8 17.2" />
+      </svg>
+      <span>恢复自动图标</span>
+    </button>
+  </div>
+
+  <div class="tile-menu dialog-menu" id="dialogMenu" role="menu" aria-label="弹窗操作" hidden>
+    <button type="button" class="tile-menu-item" role="menuitem" data-action="close-dialog">
+      <svg class="tile-menu-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M7 7 L17 17 M17 7 L7 17" />
+      </svg>
+      <span id="dialogCloseLabel">关闭面板</span>
     </button>
   </div>
 
